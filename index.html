@@ -1,0 +1,997 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <meta name="theme-color" content="#111827">
+  <title>FatBall</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --panel: rgba(8, 12, 20, .78);
+      --line: rgba(255, 255, 255, .16);
+      --text: #f8fafc;
+      --muted: #9ca3af;
+      --accent: #f4c542;
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #07120d; font-family: Inter, system-ui, sans-serif; touch-action: none; }
+    button, input, select { font: inherit; }
+
+    #game-shell { position: fixed; inset: 0; overflow: hidden; background: #0a1710; }
+    #game { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+    #hud {
+      position: absolute;
+      top: max(10px, env(safe-area-inset-top));
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      backdrop-filter: blur(12px);
+      z-index: 5;
+      font-weight: 800;
+      letter-spacing: .04em;
+    }
+
+    #score { font-size: 20px; min-width: 74px; text-align: center; }
+    #clock { color: var(--muted); min-width: 45px; text-align: center; }
+
+    #energy-wrap {
+      position: absolute;
+      top: calc(max(10px, env(safe-area-inset-top)) + 58px);
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(180px, 48vw);
+      height: 9px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,.18);
+      background: rgba(0,0,0,.35);
+      overflow: hidden;
+      z-index: 5;
+    }
+
+    #energy { width: 100%; height: 100%; background: linear-gradient(90deg, #f59e0b, #fde68a); transform-origin: left; }
+
+    #toast {
+      position: absolute;
+      top: 20%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(.9);
+      padding: 10px 18px;
+      border-radius: 999px;
+      background: rgba(0,0,0,.66);
+      border: 1px solid rgba(255,255,255,.18);
+      font-weight: 900;
+      opacity: 0;
+      transition: .18s ease;
+      pointer-events: none;
+      z-index: 7;
+    }
+    #toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+    #controls { position: absolute; inset: 0; z-index: 6; pointer-events: none; }
+
+    #joystick-zone {
+      position: absolute;
+      left: max(16px, env(safe-area-inset-left));
+      bottom: calc(max(18px, env(safe-area-inset-bottom)) + 14px);
+      width: 142px;
+      height: 142px;
+      border-radius: 50%;
+      background: rgba(0,0,0,.25);
+      border: 1px solid rgba(255,255,255,.15);
+      pointer-events: auto;
+      touch-action: none;
+      backdrop-filter: blur(7px);
+    }
+
+    #joystick-knob {
+      position: absolute;
+      left: 50%; top: 50%;
+      width: 66px; height: 66px;
+      margin: -33px;
+      border-radius: 50%;
+      border: 2px solid rgba(255,255,255,.35);
+      background: rgba(255,255,255,.15);
+      box-shadow: inset 0 0 16px rgba(255,255,255,.08);
+      transform: translate(0,0);
+    }
+
+    .action {
+      position: absolute;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      border: 1px solid rgba(255,255,255,.22);
+      color: white;
+      background: rgba(7, 12, 18, .64);
+      backdrop-filter: blur(9px);
+      font-size: 11px;
+      font-weight: 900;
+      letter-spacing: .03em;
+      user-select: none;
+      pointer-events: auto;
+      touch-action: none;
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.04);
+    }
+    .action.active { transform: scale(.92); filter: brightness(1.25); }
+    .action.cooldown { opacity: .45; }
+
+    #shoot { right: max(18px, env(safe-area-inset-right)); bottom: calc(max(20px, env(safe-area-inset-bottom)) + 30px); width: 82px; height: 82px; background: rgba(183, 34, 34, .72); }
+    #pass { right: calc(max(18px, env(safe-area-inset-right)) + 88px); bottom: calc(max(20px, env(safe-area-inset-bottom)) + 86px); width: 66px; height: 66px; background: rgba(25, 100, 180, .72); }
+    #tackle { right: calc(max(18px, env(safe-area-inset-right)) + 4px); bottom: calc(max(20px, env(safe-area-inset-bottom)) + 126px); width: 62px; height: 62px; }
+    #skill { right: calc(max(18px, env(safe-area-inset-right)) + 96px); bottom: calc(max(20px, env(safe-area-inset-bottom)) + 164px); width: 58px; height: 58px; }
+    #sprint { left: calc(max(16px, env(safe-area-inset-left)) + 106px); bottom: calc(max(18px, env(safe-area-inset-bottom)) + 122px); width: 58px; height: 58px; background: rgba(214, 139, 25, .68); }
+
+    #charge {
+      position: absolute;
+      right: calc(max(18px, env(safe-area-inset-right)) + 28px);
+      bottom: calc(max(20px, env(safe-area-inset-bottom)) + 120px);
+      width: 12px;
+      height: 72px;
+      border: 1px solid rgba(255,255,255,.2);
+      border-radius: 99px;
+      background: rgba(0,0,0,.32);
+      overflow: hidden;
+      opacity: 0;
+      transition: opacity .1s;
+    }
+    #charge.visible { opacity: 1; }
+    #charge-fill { position: absolute; left: 0; right: 0; bottom: 0; height: 0%; background: #facc15; }
+
+    #menu {
+      position: absolute;
+      inset: 0;
+      z-index: 20;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: max(22px, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom));
+      background: radial-gradient(circle at 50% 30%, rgba(42, 100, 62, .42), rgba(2, 8, 5, .96) 70%);
+      overflow-y: auto;
+      touch-action: pan-y;
+    }
+
+    .logo { margin: 0; font-size: clamp(44px, 13vw, 68px); line-height: .9; text-transform: uppercase; font-weight: 1000; letter-spacing: -.06em; text-align: center; }
+    .logo span { color: var(--accent); }
+    .tagline { text-align: center; color: var(--muted); margin: 12px 0 24px; }
+
+    .panel {
+      width: min(100%, 430px);
+      margin: 0 auto;
+      padding: 18px;
+      border-radius: 22px;
+      border: 1px solid var(--line);
+      background: rgba(10, 15, 21, .74);
+      backdrop-filter: blur(16px);
+    }
+
+    .preview-row { display: grid; grid-template-columns: 112px 1fr; gap: 16px; align-items: center; }
+    #player-preview { width: 112px; height: 144px; border-radius: 18px; background: #1b3323; border: 1px solid var(--line); }
+    .fields { display: grid; gap: 10px; }
+    label { display: grid; gap: 5px; color: var(--muted); font-size: 12px; font-weight: 700; }
+    input, select { width: 100%; border: 1px solid var(--line); border-radius: 12px; background: rgba(0,0,0,.28); color: white; padding: 10px; outline: none; }
+    input[type="color"] { height: 42px; padding: 4px; }
+    .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+
+    #play {
+      width: 100%;
+      margin-top: 16px;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px;
+      color: #111827;
+      background: var(--accent);
+      font-weight: 1000;
+      font-size: 17px;
+    }
+
+    .note { margin: 12px 2px 0; color: var(--muted); text-align: center; font-size: 12px; }
+
+    #rotate {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      place-items: center;
+      padding: 30px;
+      background: #07100b;
+      text-align: center;
+      font-weight: 900;
+      font-size: 22px;
+    }
+
+    @media (orientation: landscape) {
+      #rotate { display: grid; }
+    }
+
+    @media (max-height: 680px) {
+      #joystick-zone { width: 122px; height: 122px; }
+      #joystick-knob { width: 58px; height: 58px; margin: -29px; }
+      #shoot { width: 72px; height: 72px; }
+      #pass { width: 58px; height: 58px; }
+      #tackle, #skill, #sprint { width: 52px; height: 52px; }
+    }
+  </style>
+</head>
+<body>
+  <main id="game-shell">
+    <canvas id="game" aria-label="FatBall football pitch"></canvas>
+
+    <div id="hud">
+      <span id="clock">03:00</span>
+      <span id="score">0 - 0</span>
+    </div>
+    <div id="energy-wrap"><div id="energy"></div></div>
+    <div id="toast">GOAL</div>
+
+    <div id="controls" hidden>
+      <div id="joystick-zone"><div id="joystick-knob"></div></div>
+      <button class="action" id="sprint" type="button">SPRINT</button>
+      <button class="action" id="pass" type="button">PASS</button>
+      <button class="action" id="shoot" type="button">SHOOT</button>
+      <button class="action" id="tackle" type="button">TACKLE</button>
+      <button class="action" id="skill" type="button">SKILL</button>
+      <div id="charge"><div id="charge-fill"></div></div>
+    </div>
+
+    <section id="menu">
+      <h1 class="logo">Fat<span>Ball</span></h1>
+      <p class="tagline">portrait football, one player, two thumbs</p>
+      <div class="panel">
+        <div class="preview-row">
+          <canvas id="player-preview" width="224" height="288"></canvas>
+          <div class="fields">
+            <label>Player name
+              <input id="name" maxlength="12" value="Forsan">
+            </label>
+            <label>Body
+              <select id="body">
+                <option value="balanced">Balanced</option>
+                <option value="big">Big</option>
+                <option value="quick">Quick</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="two" style="margin-top: 12px">
+          <label>Skin
+            <input id="skin" type="color" value="#b97850">
+          </label>
+          <label>Shirt
+            <input id="shirt" type="color" value="#f4c542">
+          </label>
+        </div>
+        <div class="two" style="margin-top: 10px">
+          <label>Hair
+            <input id="hair" type="color" value="#17110f">
+          </label>
+          <label>Boots
+            <input id="boots" type="color" value="#f8fafc">
+          </label>
+        </div>
+        <button id="play" type="button">PLAY 3V3</button>
+        <p class="note">first prototype uses AI, online rooms come next</p>
+      </div>
+    </section>
+
+    <div id="rotate">Rotate your phone back to portrait to play FatBall</div>
+  </main>
+
+  <script>
+    (() => {
+      'use strict';
+
+      const canvas = document.getElementById('game');
+      const ctx = canvas.getContext('2d');
+      const preview = document.getElementById('player-preview');
+      const pctx = preview.getContext('2d');
+      const controls = document.getElementById('controls');
+      const menu = document.getElementById('menu');
+      const scoreEl = document.getElementById('score');
+      const clockEl = document.getElementById('clock');
+      const energyEl = document.getElementById('energy');
+      const toast = document.getElementById('toast');
+      const charge = document.getElementById('charge');
+      const chargeFill = document.getElementById('charge-fill');
+
+      const WORLD = { w: 720, h: 1400, topLine: 72, bottomLine: 1328, goalLeft: 270, goalRight: 450 };
+      const state = {
+        running: false,
+        score: [0, 0],
+        time: 180,
+        last: 0,
+        cameraY: 700,
+        energy: 100,
+        sprinting: false,
+        tackleCooldown: 0,
+        skillCooldown: 0,
+        shootStart: 0,
+        shootPointer: null,
+        passPointer: null,
+        input: { x: 0, y: 0 },
+        players: [],
+        ball: { x: 360, y: 700, vx: 0, vy: 0, r: 12, lastTouch: null },
+        customization: {}
+      };
+
+      const ui = {
+        name: document.getElementById('name'),
+        body: document.getElementById('body'),
+        skin: document.getElementById('skin'),
+        shirt: document.getElementById('shirt'),
+        hair: document.getElementById('hair'),
+        boots: document.getElementById('boots')
+      };
+
+      function resize() {
+        const dpr = Math.min(window.devicePixelRatio || 1, 2);
+        canvas.width = Math.round(innerWidth * dpr);
+        canvas.height = Math.round(innerHeight * dpr);
+        canvas.style.width = innerWidth + 'px';
+        canvas.style.height = innerHeight + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      }
+      addEventListener('resize', resize);
+      resize();
+
+      function readCustomization() {
+        state.customization = {
+          name: ui.name.value.trim() || 'Player',
+          body: ui.body.value,
+          skin: ui.skin.value,
+          shirt: ui.shirt.value,
+          hair: ui.hair.value,
+          boots: ui.boots.value
+        };
+        drawPreview();
+      }
+
+      Object.values(ui).forEach(el => el.addEventListener('input', readCustomization));
+
+      function roundedRect(c, x, y, w, h, r) {
+        c.beginPath();
+        c.roundRect(x, y, w, h, r);
+      }
+
+      function drawPreview() {
+        readCustomizationSafe();
+        const c = state.customization;
+        pctx.clearRect(0, 0, preview.width, preview.height);
+        pctx.fillStyle = '#173722';
+        pctx.fillRect(0, 0, preview.width, preview.height);
+        pctx.save();
+        pctx.translate(112, 54);
+        pctx.scale(2.2, 2.2);
+        drawCharacter(pctx, {
+          x: 0, y: 24, radius: c.body === 'big' ? 25 : c.body === 'quick' ? 19 : 22,
+          skin: c.skin, shirt: c.shirt, hair: c.hair, boots: c.boots,
+          team: 0, name: c.name, facingX: 0, facingY: -1, selected: false
+        }, true);
+        pctx.restore();
+      }
+
+      function readCustomizationSafe() {
+        state.customization = {
+          name: ui.name.value.trim() || 'Player', body: ui.body.value,
+          skin: ui.skin.value, shirt: ui.shirt.value, hair: ui.hair.value, boots: ui.boots.value
+        };
+      }
+
+      function makePlayer(team, role, x, y, index) {
+        const isUser = team === 0 && index === 0;
+        const c = isUser ? state.customization : {
+          name: team === 0 ? ['You', 'Milo', 'Kareem'][index] : ['Rex', 'Nico', 'Zed'][index],
+          body: index === 2 ? 'big' : 'balanced',
+          skin: ['#b97850', '#e0a47a', '#8c5c3e'][index],
+          shirt: team === 0 ? '#f4c542' : '#ef4444',
+          hair: '#17110f', boots: '#f8fafc'
+        };
+        const radius = c.body === 'big' ? 24 : c.body === 'quick' ? 19 : 21;
+        return {
+          id: `${team}-${index}`,
+          team, role, x, y, homeX: x, homeY: y,
+          vx: 0, vy: 0, radius, speed: c.body === 'big' ? 205 : c.body === 'quick' ? 250 : 228,
+          name: isUser ? state.customization.name : c.name,
+          skin: c.skin, shirt: c.shirt, hair: c.hair, boots: c.boots,
+          facingX: 0, facingY: team === 0 ? -1 : 1,
+          user: isUser, tackle: 0, stun: 0
+        };
+      }
+
+      function resetPlayers() {
+        state.players = [
+          makePlayer(0, 'forward', 360, 1030, 0),
+          makePlayer(0, 'mid', 230, 900, 1),
+          makePlayer(0, 'keeper', 360, 1255, 2),
+          makePlayer(1, 'forward', 360, 370, 0),
+          makePlayer(1, 'mid', 490, 500, 1),
+          makePlayer(1, 'keeper', 360, 145, 2)
+        ];
+      }
+
+      function resetKickoff(scoredTeam = null) {
+        resetPlayers();
+        state.ball.x = 360;
+        state.ball.y = 700;
+        state.ball.vx = 0;
+        state.ball.vy = 0;
+        state.ball.lastTouch = scoredTeam === 0 ? '1-0' : '0-0';
+        state.energy = 100;
+      }
+
+      function startGame() {
+        readCustomizationSafe();
+        state.running = true;
+        state.score = [0, 0];
+        state.time = 180;
+        state.last = performance.now();
+        menu.hidden = true;
+        controls.hidden = false;
+        resetKickoff();
+        requestAnimationFrame(loop);
+      }
+      document.getElementById('play').addEventListener('click', startGame);
+
+      function showToast(text) {
+        toast.textContent = text;
+        toast.classList.add('show');
+        clearTimeout(showToast.timer);
+        showToast.timer = setTimeout(() => toast.classList.remove('show'), 900);
+      }
+
+      function userPlayer() { return state.players.find(p => p.user); }
+
+      function nearestToBall(team, excludeKeeper = true) {
+        let best = null;
+        let bestD = Infinity;
+        for (const p of state.players) {
+          if (p.team !== team || (excludeKeeper && p.role === 'keeper')) continue;
+          const d = Math.hypot(p.x - state.ball.x, p.y - state.ball.y);
+          if (d < bestD) { bestD = d; best = p; }
+        }
+        return best;
+      }
+
+      function hasBall(p, reach = 38) {
+        return Math.hypot(p.x - state.ball.x, p.y - state.ball.y) < p.radius + state.ball.r + reach * .25;
+      }
+
+      function kickBall(p, dx, dy, power) {
+        if (!hasBall(p, 46)) return false;
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len; dy /= len;
+        state.ball.x = p.x + dx * (p.radius + state.ball.r + 3);
+        state.ball.y = p.y + dy * (p.radius + state.ball.r + 3);
+        state.ball.vx = dx * power + p.vx * .25;
+        state.ball.vy = dy * power + p.vy * .25;
+        state.ball.lastTouch = p.id;
+        p.facingX = dx; p.facingY = dy;
+        return true;
+      }
+
+      function autoPass() {
+        const p = userPlayer();
+        if (!p) return;
+        const mates = state.players.filter(m => m.team === p.team && m.id !== p.id);
+        let best = null;
+        let score = -Infinity;
+        for (const m of mates) {
+          const forward = p.y - m.y;
+          const d = Math.hypot(m.x - p.x, m.y - p.y);
+          const s = forward * .8 - d * .25 + (m.role === 'keeper' ? -250 : 0);
+          if (s > score) { score = s; best = m; }
+        }
+        const dx = best ? best.x - p.x : p.facingX;
+        const dy = best ? best.y - p.y : p.facingY;
+        kickBall(p, dx, dy, 520);
+      }
+
+      function pointerAim(el, e, fallbackY = -1) {
+        const r = el.getBoundingClientRect();
+        const dx = e.clientX - (r.left + r.width / 2);
+        const dy = e.clientY - (r.top + r.height / 2);
+        const len = Math.hypot(dx, dy);
+        if (len < 12) return { x: 0, y: fallbackY };
+        return { x: dx / len, y: dy / len };
+      }
+
+      function bindHoldButton(id, onDown, onUp) {
+        const el = document.getElementById(id);
+        el.addEventListener('pointerdown', e => {
+          e.preventDefault();
+          el.setPointerCapture(e.pointerId);
+          el.classList.add('active');
+          onDown?.(e, el);
+        });
+        el.addEventListener('pointerup', e => {
+          e.preventDefault();
+          el.classList.remove('active');
+          onUp?.(e, el);
+        });
+        el.addEventListener('pointercancel', e => {
+          el.classList.remove('active');
+          onUp?.(e, el, true);
+        });
+      }
+
+      bindHoldButton('sprint', () => { state.sprinting = true; }, () => { state.sprinting = false; });
+
+      bindHoldButton('pass', (e, el) => { state.passPointer = { id: e.pointerId, aim: pointerAim(el, e) }; }, (e, el, cancelled) => {
+        if (cancelled) return;
+        const aim = pointerAim(el, e);
+        const p = userPlayer();
+        if (Math.hypot(aim.x, aim.y + 1) < .2) autoPass();
+        else kickBall(p, aim.x, aim.y, 520);
+        state.passPointer = null;
+      });
+
+      const shootEl = document.getElementById('shoot');
+      bindHoldButton('shoot', (e, el) => {
+        state.shootStart = performance.now();
+        state.shootPointer = { id: e.pointerId, aim: pointerAim(el, e) };
+        charge.classList.add('visible');
+      }, (e, el, cancelled) => {
+        const held = Math.min(1, (performance.now() - state.shootStart) / 900);
+        charge.classList.remove('visible');
+        chargeFill.style.height = '0%';
+        if (!cancelled) {
+          const aim = pointerAim(el, e);
+          kickBall(userPlayer(), aim.x, aim.y, 630 + held * 470);
+        }
+        state.shootStart = 0;
+        state.shootPointer = null;
+      });
+      shootEl.addEventListener('pointermove', e => {
+        if (state.shootPointer?.id === e.pointerId) state.shootPointer.aim = pointerAim(shootEl, e);
+      });
+
+      bindHoldButton('tackle', () => {
+        const p = userPlayer();
+        if (!p || state.tackleCooldown > 0) return;
+        state.tackleCooldown = .75;
+        p.tackle = .22;
+        p.vx += p.facingX * 300;
+        p.vy += p.facingY * 300;
+        for (const other of state.players) {
+          if (other.team === p.team) continue;
+          if (Math.hypot(other.x - p.x, other.y - p.y) < 62 && hasBall(other, 45)) {
+            state.ball.vx = p.facingX * 440;
+            state.ball.vy = p.facingY * 440;
+            state.ball.lastTouch = p.id;
+            other.stun = .28;
+          }
+        }
+      });
+
+      bindHoldButton('skill', () => {
+        const p = userPlayer();
+        if (!p || state.skillCooldown > 0 || state.energy < 12) return;
+        state.skillCooldown = 1.4;
+        state.energy -= 12;
+        const dx = state.input.x || p.facingX;
+        const dy = state.input.y || p.facingY;
+        p.vx += dx * 420;
+        p.vy += dy * 420;
+        if (hasBall(p, 44)) {
+          state.ball.vx += dx * 360;
+          state.ball.vy += dy * 360;
+          state.ball.lastTouch = p.id;
+        }
+      });
+
+      const joy = document.getElementById('joystick-zone');
+      const knob = document.getElementById('joystick-knob');
+      let joyPointer = null;
+
+      function updateJoystick(e) {
+        const r = joy.getBoundingClientRect();
+        let dx = e.clientX - (r.left + r.width / 2);
+        let dy = e.clientY - (r.top + r.height / 2);
+        const max = r.width * .32;
+        const len = Math.hypot(dx, dy);
+        if (len > max) { dx = dx / len * max; dy = dy / len * max; }
+        state.input.x = dx / max;
+        state.input.y = dy / max;
+        knob.style.transform = `translate(${dx}px, ${dy}px)`;
+      }
+
+      joy.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        joyPointer = e.pointerId;
+        joy.setPointerCapture(e.pointerId);
+        updateJoystick(e);
+      });
+      joy.addEventListener('pointermove', e => { if (e.pointerId === joyPointer) updateJoystick(e); });
+      function releaseJoystick(e) {
+        if (e.pointerId !== joyPointer) return;
+        joyPointer = null;
+        state.input.x = 0; state.input.y = 0;
+        knob.style.transform = 'translate(0,0)';
+      }
+      joy.addEventListener('pointerup', releaseJoystick);
+      joy.addEventListener('pointercancel', releaseJoystick);
+
+      const keys = new Set();
+      addEventListener('keydown', e => {
+        keys.add(e.key.toLowerCase());
+        if (e.key === ' ') { e.preventDefault(); autoPass(); }
+        if (e.key.toLowerCase() === 'f') shootTowardGoal(.7);
+      });
+      addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
+
+      function shootTowardGoal(chargeValue) {
+        kickBall(userPlayer(), 0, -1, 680 + chargeValue * 400);
+      }
+
+      function updateKeyboard() {
+        let x = 0, y = 0;
+        if (keys.has('a') || keys.has('arrowleft')) x--;
+        if (keys.has('d') || keys.has('arrowright')) x++;
+        if (keys.has('w') || keys.has('arrowup')) y--;
+        if (keys.has('s') || keys.has('arrowdown')) y++;
+        if (x || y) {
+          const l = Math.hypot(x, y);
+          state.input.x = x / l; state.input.y = y / l;
+        }
+        state.sprinting = keys.has('shift');
+      }
+
+      function updatePlayer(p, dt) {
+        if (p.stun > 0) { p.stun -= dt; p.vx *= .88; p.vy *= .88; }
+        else if (p.user) updateUser(p, dt);
+        else updateAI(p, dt);
+
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.vx *= Math.pow(.002, dt);
+        p.vy *= Math.pow(.002, dt);
+        p.x = Math.max(35, Math.min(WORLD.w - 35, p.x));
+        p.y = Math.max(WORLD.topLine + 4, Math.min(WORLD.bottomLine - 4, p.y));
+        p.tackle = Math.max(0, p.tackle - dt);
+      }
+
+      function updateUser(p, dt) {
+        updateKeyboard();
+        const mag = Math.min(1, Math.hypot(state.input.x, state.input.y));
+        let speed = p.speed;
+        if (state.sprinting && state.energy > 0 && mag > .1) {
+          speed *= 1.42;
+          state.energy = Math.max(0, state.energy - 24 * dt);
+        } else state.energy = Math.min(100, state.energy + 12 * dt);
+        if (mag > .08) {
+          p.vx += (state.input.x * speed - p.vx) * Math.min(1, dt * 9);
+          p.vy += (state.input.y * speed - p.vy) * Math.min(1, dt * 9);
+          p.facingX = state.input.x / mag;
+          p.facingY = state.input.y / mag;
+        }
+        dribble(p, dt, mag);
+      }
+
+      function dribble(p, dt, movement) {
+        const d = Math.hypot(state.ball.x - p.x, state.ball.y - p.y);
+        if (d > p.radius + state.ball.r + 20 || d < 1) return;
+        const desiredX = p.x + p.facingX * (p.radius + state.ball.r + 8);
+        const desiredY = p.y + p.facingY * (p.radius + state.ball.r + 8);
+        const control = movement > .1 ? 8 : 5;
+        state.ball.vx += (desiredX - state.ball.x) * control * dt * 60;
+        state.ball.vy += (desiredY - state.ball.y) * control * dt * 60;
+        state.ball.vx += p.vx * .08;
+        state.ball.vy += p.vy * .08;
+        state.ball.lastTouch = p.id;
+      }
+
+      function updateAI(p, dt) {
+        const ball = state.ball;
+        const teamChaser = nearestToBall(p.team);
+        let tx = p.homeX, ty = p.homeY;
+        const attackingUp = p.team === 0;
+
+        if (p.role === 'keeper') {
+          tx = Math.max(WORLD.goalLeft + 35, Math.min(WORLD.goalRight - 35, ball.x));
+          ty = attackingUp ? 1260 : 140;
+          const danger = attackingUp ? ball.y > 1080 : ball.y < 320;
+          if (danger) {
+            tx = ball.x;
+            ty = attackingUp ? Math.min(1280, ball.y) : Math.max(120, ball.y);
+          }
+        } else if (teamChaser?.id === p.id) {
+          tx = ball.x; ty = ball.y;
+        } else {
+          tx = p.homeX + (ball.x - 360) * .35;
+          ty = p.homeY + (ball.y - 700) * .25;
+        }
+
+        const dx = tx - p.x, dy = ty - p.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const speed = p.speed * (teamChaser?.id === p.id ? 1.08 : .88);
+        if (len > 8) {
+          p.vx += (dx / len * speed - p.vx) * Math.min(1, dt * 5.2);
+          p.vy += (dy / len * speed - p.vy) * Math.min(1, dt * 5.2);
+          p.facingX = dx / len; p.facingY = dy / len;
+        }
+
+        if (hasBall(p, 38)) {
+          const goalY = p.team === 0 ? WORLD.topLine : WORLD.bottomLine;
+          const goalDistance = Math.abs(p.y - goalY);
+          if (goalDistance < 430 && Math.random() < dt * 1.9) {
+            kickBall(p, (360 - p.x) * .003 + (Math.random() - .5) * .12, p.team === 0 ? -1 : 1, 730 + Math.random() * 180);
+          } else if (Math.random() < dt * .7) {
+            const mates = state.players.filter(m => m.team === p.team && m.id !== p.id && m.role !== 'keeper');
+            if (mates.length) {
+              const m = mates[Math.floor(Math.random() * mates.length)];
+              kickBall(p, m.x - p.x, m.y - p.y, 470);
+            }
+          } else dribble(p, dt, 1);
+        }
+      }
+
+      function resolvePlayerCollisions() {
+        for (let i = 0; i < state.players.length; i++) {
+          for (let j = i + 1; j < state.players.length; j++) {
+            const a = state.players[i], b = state.players[j];
+            let dx = b.x - a.x, dy = b.y - a.y;
+            const d = Math.hypot(dx, dy) || .01;
+            const min = a.radius + b.radius;
+            if (d < min) {
+              const push = (min - d) * .5;
+              dx /= d; dy /= d;
+              a.x -= dx * push; a.y -= dy * push;
+              b.x += dx * push; b.y += dy * push;
+            }
+          }
+        }
+      }
+
+      function updateBall(dt) {
+        const b = state.ball;
+        b.x += b.vx * dt;
+        b.y += b.vy * dt;
+        const friction = Math.pow(.18, dt);
+        b.vx *= friction;
+        b.vy *= friction;
+
+        for (const p of state.players) {
+          let dx = b.x - p.x, dy = b.y - p.y;
+          const d = Math.hypot(dx, dy) || .01;
+          const min = p.radius + b.r;
+          if (d < min) {
+            dx /= d; dy /= d;
+            b.x = p.x + dx * min;
+            b.y = p.y + dy * min;
+            const relative = b.vx * dx + b.vy * dy;
+            if (relative < 90) {
+              b.vx += dx * (100 - relative) + p.vx * .32;
+              b.vy += dy * (100 - relative) + p.vy * .32;
+            }
+            b.lastTouch = p.id;
+          }
+        }
+
+        if (b.x < b.r) { b.x = b.r; b.vx = Math.abs(b.vx) * .72; }
+        if (b.x > WORLD.w - b.r) { b.x = WORLD.w - b.r; b.vx = -Math.abs(b.vx) * .72; }
+
+        const inGoalMouth = b.x > WORLD.goalLeft && b.x < WORLD.goalRight;
+        if (!inGoalMouth) {
+          if (b.y < WORLD.topLine + b.r) { b.y = WORLD.topLine + b.r; b.vy = Math.abs(b.vy) * .72; }
+          if (b.y > WORLD.bottomLine - b.r) { b.y = WORLD.bottomLine - b.r; b.vy = -Math.abs(b.vy) * .72; }
+        }
+
+        if (b.y < 34 && inGoalMouth) goal(0);
+        if (b.y > WORLD.h - 34 && inGoalMouth) goal(1);
+      }
+
+      function goal(team) {
+        state.score[team]++;
+        showToast(team === 0 ? 'FAT GOAL' : 'THEY SCORED');
+        resetKickoff(team);
+      }
+
+      function update(dt) {
+        state.time = Math.max(0, state.time - dt);
+        state.tackleCooldown = Math.max(0, state.tackleCooldown - dt);
+        state.skillCooldown = Math.max(0, state.skillCooldown - dt);
+
+        for (const p of state.players) updatePlayer(p, dt);
+        resolvePlayerCollisions();
+        updateBall(dt);
+
+        const user = userPlayer();
+        const focusY = user ? user.y * .72 + state.ball.y * .28 : 700;
+        state.cameraY += (focusY - state.cameraY) * Math.min(1, dt * 4.5);
+
+        if (state.shootStart) {
+          const held = Math.min(1, (performance.now() - state.shootStart) / 900);
+          chargeFill.style.height = `${held * 100}%`;
+        }
+
+        scoreEl.textContent = `${state.score[0]} - ${state.score[1]}`;
+        const min = Math.floor(state.time / 60);
+        const sec = Math.floor(state.time % 60).toString().padStart(2, '0');
+        clockEl.textContent = `${min}:${sec}`;
+        energyEl.style.transform = `scaleX(${state.energy / 100})`;
+        document.getElementById('tackle').classList.toggle('cooldown', state.tackleCooldown > 0);
+        document.getElementById('skill').classList.toggle('cooldown', state.skillCooldown > 0);
+
+        if (state.time <= 0) {
+          state.running = false;
+          controls.hidden = true;
+          menu.hidden = false;
+          document.querySelector('.tagline').textContent = `full time, ${state.score[0]} - ${state.score[1]}`;
+        }
+      }
+
+      function worldTransform() {
+        const w = innerWidth, h = innerHeight;
+        const viewW = 610;
+        const scale = w / viewW;
+        const viewH = h / scale;
+        const minY = viewH / 2;
+        const maxY = WORLD.h - viewH / 2;
+        const cameraY = minY > maxY ? WORLD.h / 2 : Math.max(minY, Math.min(maxY, state.cameraY));
+        return { scale, offsetX: (w - WORLD.w * scale) / 2, offsetY: h / 2 - cameraY * scale };
+      }
+
+      function drawPitch(t) {
+        ctx.save();
+        ctx.translate(t.offsetX, t.offsetY);
+        ctx.scale(t.scale, t.scale);
+
+        ctx.fillStyle = '#1d6a38';
+        ctx.fillRect(0, 0, WORLD.w, WORLD.h);
+        const stripeH = 100;
+        for (let y = 0; y < WORLD.h; y += stripeH) {
+          ctx.fillStyle = (y / stripeH) % 2 ? 'rgba(255,255,255,.026)' : 'rgba(0,0,0,.025)';
+          ctx.fillRect(0, y, WORLD.w, stripeH);
+        }
+
+        ctx.strokeStyle = 'rgba(255,255,255,.78)';
+        ctx.lineWidth = 5;
+        ctx.strokeRect(22, WORLD.topLine, WORLD.w - 44, WORLD.bottomLine - WORLD.topLine);
+        ctx.beginPath();
+        ctx.moveTo(22, 700); ctx.lineTo(WORLD.w - 22, 700);
+        ctx.stroke();
+        ctx.beginPath(); ctx.arc(360, 700, 95, 0, Math.PI * 2); ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.beginPath(); ctx.arc(360,700,6,0,Math.PI*2); ctx.fill();
+
+        ctx.strokeRect(185, WORLD.topLine, 350, 170);
+        ctx.strokeRect(185, WORLD.bottomLine - 170, 350, 170);
+        ctx.strokeRect(270, WORLD.topLine, 180, 72);
+        ctx.strokeRect(270, WORLD.bottomLine - 72, 180, 72);
+
+        ctx.strokeStyle = 'rgba(255,255,255,.55)';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(WORLD.goalLeft, 8, WORLD.goalRight - WORLD.goalLeft, 64);
+        ctx.strokeRect(WORLD.goalLeft, WORLD.bottomLine, WORLD.goalRight - WORLD.goalLeft, 64);
+
+        ctx.globalAlpha = .18;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2;
+        for (let x = WORLD.goalLeft + 15; x < WORLD.goalRight; x += 15) {
+          ctx.beginPath(); ctx.moveTo(x, 8); ctx.lineTo(x, 72); ctx.stroke();
+          ctx.beginPath(); ctx.moveTo(x, WORLD.bottomLine); ctx.lineTo(x, WORLD.bottomLine + 64); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
+
+      function drawCharacter(c, p, previewMode = false) {
+        const r = p.radius;
+        c.save();
+        c.translate(p.x, p.y);
+
+        if (p.selected) {
+          c.strokeStyle = '#fff';
+          c.lineWidth = 3;
+          c.beginPath(); c.arc(0, 0, r + 12, 0, Math.PI * 2); c.stroke();
+          c.fillStyle = 'rgba(255,255,255,.12)'; c.beginPath(); c.arc(0,0,r+9,0,Math.PI*2); c.fill();
+        }
+
+        c.fillStyle = 'rgba(0,0,0,.25)';
+        c.beginPath(); c.ellipse(0, r * .8, r * 1.15, r * .5, 0, 0, Math.PI * 2); c.fill();
+
+        c.strokeStyle = p.boots;
+        c.lineWidth = Math.max(5, r * .28);
+        c.lineCap = 'round';
+        c.beginPath(); c.moveTo(-r*.38, r*.45); c.lineTo(-r*.48, r*.95); c.stroke();
+        c.beginPath(); c.moveTo(r*.38, r*.45); c.lineTo(r*.48, r*.95); c.stroke();
+
+        c.fillStyle = p.shirt;
+        c.beginPath();
+        c.ellipse(0, 0, r * .9, r * 1.05, 0, 0, Math.PI * 2);
+        c.fill();
+
+        c.strokeStyle = 'rgba(255,255,255,.5)';
+        c.lineWidth = 2;
+        c.beginPath(); c.moveTo(-r*.62, -r*.42); c.lineTo(r*.62, -r*.42); c.stroke();
+
+        c.fillStyle = p.skin;
+        c.beginPath(); c.arc(0, -r * .96, r * .58, 0, Math.PI * 2); c.fill();
+
+        c.fillStyle = p.hair;
+        c.beginPath(); c.arc(0, -r * 1.08, r * .56, Math.PI, Math.PI * 2); c.fill();
+
+        c.strokeStyle = '#111';
+        c.lineWidth = 2;
+        c.beginPath();
+        c.moveTo(0, -r * .95);
+        c.lineTo(p.facingX * r * .3, -r * .95 + p.facingY * r * .3);
+        c.stroke();
+
+        if (!previewMode) {
+          c.font = '700 18px system-ui';
+          c.textAlign = 'center';
+          c.fillStyle = 'white';
+          c.strokeStyle = 'rgba(0,0,0,.75)';
+          c.lineWidth = 5;
+          c.strokeText(p.name, 0, r + 26);
+          c.fillText(p.name, 0, r + 26);
+        }
+        c.restore();
+      }
+
+      function drawBall(t) {
+        const b = state.ball;
+        ctx.save();
+        ctx.translate(t.offsetX + b.x * t.scale, t.offsetY + b.y * t.scale);
+        ctx.scale(t.scale, t.scale);
+        ctx.fillStyle = 'rgba(0,0,0,.22)';
+        ctx.beginPath(); ctx.ellipse(3, 7, b.r * 1.05, b.r * .65, 0, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = '#f8fafc';
+        ctx.beginPath(); ctx.arc(0,0,b.r,0,Math.PI*2); ctx.fill();
+        ctx.fillStyle = '#151515';
+        for (let i = 0; i < 5; i++) {
+          const a = i * Math.PI * 2 / 5;
+          ctx.beginPath(); ctx.arc(Math.cos(a)*6, Math.sin(a)*6, 2.7, 0, Math.PI*2); ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      function render() {
+        ctx.clearRect(0, 0, innerWidth, innerHeight);
+        const t = worldTransform();
+        drawPitch(t);
+        const ordered = [...state.players].sort((a,b) => a.y - b.y);
+        for (const p of ordered) {
+          drawCharacter(ctx, {
+            ...p,
+            x: t.offsetX / t.scale + p.x,
+            y: t.offsetY / t.scale + p.y,
+            selected: p.user
+          });
+        }
+        drawBall(t);
+
+        const vignette = ctx.createLinearGradient(0, 0, 0, innerHeight);
+        vignette.addColorStop(0, 'rgba(0,0,0,.2)');
+        vignette.addColorStop(.2, 'rgba(0,0,0,0)');
+        vignette.addColorStop(.72, 'rgba(0,0,0,0)');
+        vignette.addColorStop(1, 'rgba(0,0,0,.34)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0,0,innerWidth,innerHeight);
+      }
+
+      function loop(now) {
+        if (!state.running) return;
+        const dt = Math.min(.033, (now - state.last) / 1000 || 0);
+        state.last = now;
+        update(dt);
+        render();
+        if (state.running) requestAnimationFrame(loop);
+      }
+
+      readCustomizationSafe();
+      drawPreview();
+      resetKickoff();
+      render();
+    })();
+  </script>
+</body>
+</html>
